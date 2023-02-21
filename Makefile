@@ -1,4 +1,4 @@
-TARGET=fat_fsck
+TARGET=wchkdsk
 
 CC = gcc
 CPP = $(CC) -E
@@ -9,7 +9,7 @@ LDFLAGS =
 
 all : $(TARGET)
 
-$(TARGET): fat_fsck.o
+$(TARGET): wchkdsk.o
 	$(CC) -o $@ $(LDFLAGS) $^
 
 .c.o:
@@ -17,7 +17,7 @@ $(TARGET): fat_fsck.o
 
 install: $(TARGET)
 	mkdir -p $(SBINDIR)
-	install -m 755 fat_fsck $(SBINDIR)
+	install -m 755 wchkdsk $(SBINDIR)
 
 clean:
 	rm -f *.o *.s *.i *~ \#*# tmp_make .#* .new*
@@ -30,4 +30,4 @@ dep:
 	$(CPP) $(CFLAGS) -MM *.c >>tmp_make
 	mv tmp_make Makefile
 
-fat_fsck.o: fat_fsck.c version.h fat_fsck.h
+wchkdsk.o: wchkdsk.c version.h wchkdsk.h
