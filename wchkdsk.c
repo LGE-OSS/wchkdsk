@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier : GPL-2.0 */
 
 /*
- * This is fsck wrapper utility for ntfsprogs/exfatprogs/fatprogs.
+ * This is fsck wrapper utility for ntfsprogs/exfat-tools/fatprogs.
  * Name from 'webOS check disk'
  */
 
@@ -24,71 +24,110 @@
 #include "version.h"
 #include "wchkdsk.h"
 
-#define MAX_FSCK_ARGS	32
-
-/**
- * EFSCK_EXIT_FAILURE		Unknown or errors left
- * EFSCK_EXIT_VOLUME_DIRTY	VolumeDirty flag in boot sector
- * EFSCK_EXIT_USER_CANCEL	Killed by signal or device is removed
- */
-#define EFSCK_EXIT_SUCCESS		0
-#define EFSCK_EXIT_FAILURE		1
-#define EFSCK_EXIT_SYNTAX_ERROR		2
-#define EFSCK_EXIT_NOT_FAT_VOLUME	3
-#define EFSCK_EXIT_RO_DEVICE		23
-#define EFSCK_EXIT_VOLUME_DIRTY		100
-#define EFSCK_EXIT_USER_CANCEL		160
-#define EFSCK_EXIT_TIMEOUT		161
-
 #ifndef __unused
 #define __unused	__attribute__((__unused__))
 #endif
 
-#define NTFS		"ntfs"
-#define EXFAT		"exfat"
-#define FAT		"fat"
-
-#define PROG_NTFS	"ntfsck"
-#define PROG_EXFAT	"fsck.exfat"
-#define PROG_FAT	"dosfsck"
-
-#define OPTS_IDX_DEFAULT	(0)
-#define OPTS_IDX_CHECK		(1)
-
-char *ntfs_opts[] = {"-a", "-C"};
-char *exfat_opts[] = {"-a", ""};	/* TODO: fill exfat opts */
-char *fat_opts[] = {"-afw", "-C"};
-
-char **fsck_opts[] = {
-	ntfs_opts, exfat_opts, fat_opts,
+/*
+ * fs_name will expand like below:
+ *
+ * char *fs_name[] = {
+ *	"ntfs",
+ *	"exfat",
+ *	"fat",
+ * };
+ */
+static const char *fs_name[FSTYPE_MAX] = {
+#define X(fstype, name, sig, fsck_progs, default_opt, check_opt) \
+	name,
+	FILESYSTEM_DEF
+#undef X
 };
 
-#define PARAM_IDX_PROGS	(0)
-#define PARAM_IDX_OPTS	(1)
-#define PARAM_IDX_DEV	(2)
+/*
+ * fs_sig will expand like below:
+ *
+ * char *fs_sig[] = {
+ *	"NTFS    ",
+ *	"EXFAT   ",
+ *	"",
+ * };
+ */
+static const char *fs_sig[FSTYPE_MAX] = {
+#define X(fstype, name, sig, fsck_progs, default_opt, check_opt) \
+	sig,
+	FILESYSTEM_DEF
+#undef X
+};
 
-char *ntfs_param[] = {PROG_NTFS, "", "", NULL};
-char *exfat_param[] = {PROG_EXFAT, "", "", NULL};
-char *fat_param[] = {PROG_FAT, "", "", NULL};
+/*
+ * fsck_param will expand like below:
+ *
+ * char *fsck_pararm[][] = {
+ *	{"ntfsck", "", "", NULL},
+ *	{"fsck.exfat", "", "", NULL},
+ *	{"dosfsck", "", "", NULL},
+ * };
+ *
+ * It means {<fsck_progs>, <fsck_opts>, <device>} respectively.
+ * fsck access each item using fstype and parameter index.
+ *
+ * variable PARAM_IDX_XXX is used to access array.
+ *
+ * example: fsck_pararm[fstype][idx]
+ */
+enum {
+	PARAM_IDX_PROGS = 0,	/* index for fsck program name */
+	PARAM_IDX_OPTS,		/* index for fsck option */
+	PARAM_IDX_DEV,		/* index for target device */
+	PARAM_IDX_MAX,
+};
 
-/* automatically repair with reclaiming file and immediately writting */
-char **fsck_param[] = {
-	ntfs_param, exfat_param, fat_param,
+char *fsck_param[FSTYPE_MAX][PARAM_IDX_MAX + 1] = {
+#define X(fstype, name, sig, fsck_progs, default_opt, check_opt) \
+	{fsck_progs, "", "", NULL},
+	FILESYSTEM_DEF
+#undef X
+};
+
+/*
+ * fsck_opts will expand like below:
+ *
+ * char *fsck_opts[][] = {
+ *	{"-a", "-C"},	// for ntfs
+ *	{"-ys", ""},	// for exfat
+ *	{"-afw", "-C"},	// for fat
+ * };
+ *
+ * It means {<default_opt>, <check_opt>} respectively.
+ * OPT_IDX_XXX is used to access array.
+ */
+enum {
+	OPTS_IDX_DEFAULT = 0,
+	OPTS_IDX_CHECK,
+	OPTS_IDX_MAX,
+};
+
+char *fsck_opts[FSTYPE_MAX][OPTS_IDX_MAX] = {
+#define X(fstype, name, sig, fsck_progs, default_opt, check_opt) \
+	{default_opt, check_opt},
+	FILESYSTEM_DEF
+#undef X
 };
 
 pid_t fsck_pid;
 
 static void usage(char *name)
 {
-	printf("wchkdsk version : %s\n", VERSION);
-	fprintf(stderr, "Usage: %s [option] <device>\n", name);
-	fprintf(stderr, "\t-h		Show help\n");
-	fprintf(stderr, "\t-V		Show version\n");
-	fprintf(stderr, "\t-f fstype    set filesystem type, {ntfs, exfat, fat}\n");
-	fprintf(stderr, "\t-a		Exit if Volume flag is clean. Auto-mode.\n");
-	fprintf(stderr, "\t-y		Same as '-a' except not checking for dirty flag.\n");
-	fprintf(stderr, "\t-t seconds	Run with a time limit\n");
-	fprintf(stderr, "This util just runs wchkdsk for ntfsck/fsck.exfat/dosfsck.\n");
+	fprintf(stdout, "wchkdsk version : %s\n", VERSION);
+	fprintf(stdout, "Usage: %s [option] <device>\n", name);
+	fprintf(stdout, "\t-h		Show help\n");
+	fprintf(stdout, "\t-V		Show version\n");
+	fprintf(stdout, "\t-f fstype    set filesystem type, {ntfs, exfat, fat}\n");
+	fprintf(stdout, "\t-a		Exit if Volume flag is clean. Auto-mode.\n");
+	fprintf(stdout, "\t-y		Same as '-a' except not checking for dirty flag.\n");
+	fprintf(stdout, "\t-t seconds	Run with a time limit\n");
+	fprintf(stdout, "This util just runs wchkdsk for ntfsck/fsck.exfat/dosfsck.\n");
 }
 
 static int kill_fsck(void)
@@ -101,13 +140,13 @@ static int kill_fsck(void)
 static void handle_timeout(int sig __unused, siginfo_t *si __unused,
 		void *u __unused)
 {
-	printf("WARN: timer is expired!\n");
+	fprintf(stdout, "WARN: timer is expired!\n");
 }
 
 static void handle_cancel_signals(int sig, siginfo_t *si __unused,
 		void *u __unused)
 {
-	printf("ERR: killed by signal %d\n", sig);
+	fprintf(stderr, "ERR: killed by signal %d\n", sig);
 	kill_fsck();
 	exit(EFSCK_EXIT_USER_CANCEL);
 }
@@ -123,7 +162,7 @@ static int setup_signal_handlers(unsigned long timeout_secs)
 	sigdelset(&sigmask, SIGINT);
 	sigdelset(&sigmask, SIGTERM);
 	if (sigprocmask(SIG_SETMASK, &sigmask, NULL) != 0)
-		printf("ERR: sigprocmask failed: %s\n", strerror(errno));
+		fprintf(stderr, "ERR: sigprocmask failed: %s\n", strerror(errno));
 
 	memset(&sa, 0, sizeof(sa));
 	sa.sa_flags = SA_SIGINFO;
@@ -135,7 +174,7 @@ static int setup_signal_handlers(unsigned long timeout_secs)
 	if (timeout_secs) {
 		sa.sa_sigaction = handle_timeout;
 		if (sigaction(SIGALRM, &sa, NULL) != 0) {
-			printf("ERR: failed to set signal handler: %s\n",
+			fprintf(stderr, "ERR: failed to set signal handler: %s\n",
 					strerror(errno));
 			return -1;
 		}
@@ -157,7 +196,7 @@ static int wait_for_fsck(pid_t pid, int *exit_status)
 				*exit_status = EXIT_USER_CANCEL;
 				return -EINTR;
 			} else {
-				printf("ERR: failed to waitpid: %s\n",
+				fprintf(stderr, "ERR: failed to waitpid: %s\n",
 						strerror(errno));
 				kill_fsck();
 				*exit_status = EFSCK_EXIT_FAILURE;
@@ -172,22 +211,135 @@ static int wait_for_fsck(pid_t pid, int *exit_status)
 	return 0;
 }
 
-/* return TRUE if device's dirty flag is set,
- * otherwise return FALSE */
-static int check_is_dirty(char *device_file, char *param[])
+static int read_fs_boot_sect(const char *device_file, char sect[], size_t len)
+{
+	int fd;
+	ssize_t bytes;
+
+	fd = open(device_file, O_RDONLY);
+	if (fd < 0) {
+		fprintf(stderr, "failed to open %s to check exfat volume: %s\n",
+				device_file, strerror(errno));
+		return fd;
+	}
+
+	bytes = read(fd, sect, len);
+	if (bytes != (ssize_t)len) {
+		fprintf(stderr, "failed to read %s to check exfat volume\n",
+				device_file);
+		close(fd);
+		return -EIO;
+	}
+
+	close(fd);
+	return 0;
+}
+
+/*
+ * Check filesystem signature for NTFS, EXFAT.
+ * FAT filesystem signature is various. so FAT can't use this function.
+ */
+static int is_fstype_volume(const char *device_file, fstype_t fstype)
+{
+	char sect[512];
+
+	if (read_fs_boot_sect(device_file, sect, sizeof(sect)) != 0)
+		return FALSE;
+
+	if (memcmp(sect + 3, fs_sig[fstype], 8) != 0)
+		return FALSE;
+
+	return TRUE;
+}
+
+static int is_exfat_clean(const char *device_file)
+{
+	char sect[512];
+
+	if (read_fs_boot_sect(device_file, sect, sizeof(sect)) != 0)
+		return FALSE;
+
+	if (sect[106] && 0x2)
+		return FALSE;
+
+	return TRUE;
+}
+
+static int handle_child_return_error(char *device_file, int fstype, int fsck_status)
+{
+
+	if (!fsck_status)
+		return EFSCK_EXIT_SUCCESS;
+
+	if (fsck_status == EXIT_OPERATION_ERROR) {
+		/*
+		 * ntfs return EXIT_OPERATION_ERROR(0x08)
+		 * when target is not ntfs format
+		 */
+		if (fstype == NTFS) {
+			if (!is_fstype_volume(device_file, fstype))
+				exit(EFSCK_EXIT_NOT_SUPPORT);
+		}
+	} else if (fsck_status == EXIT_ERRORS_LEFT) {
+		/*
+		 * EXFAT:exfat.fsck return EXIT_ERRORS_LEFT(0x01)
+		 * when target is not exfat format.
+		 */
+		if (fstype == EXFAT) {
+			if (!is_fstype_volume(device_file, fstype))
+				exit(EFSCK_EXIT_NOT_SUPPORT);
+		}
+	} else if (fsck_status == EXIT_NEED_REBOOT) {
+		/*
+		 * old fatprogs:dostsck return EXIT_NEED_REBOOT(0x02)
+		 * when target is not fat format. (until v2.13.0)
+		 * this condition will be deprecated.
+		 */
+		if (fstype == FAT)
+			exit(EFSCK_EXIT_NOT_SUPPORT);
+	} else if (fsck_status == EXIT_NOT_SUPPORT) {
+		/*
+		 * fatprogs:dosfsck return EXIT_NOT_SUPPORT(0x40)
+		 * when target is not fat format. (from v2.13.1)
+		 */
+		if (fstype == FAT)
+			exit(EFSCK_EXIT_NOT_SUPPORT);
+	}
+
+	return EFSCK_EXIT_FAILURE;
+}
+
+/*
+ * Return TRUE if device's dirty flag is set, otherwise return FALSE
+ */
+static int check_is_dirty(char *device_file, char *param[], int fstype)
 {
 	pid_t pid;
 	int wait_status;
+	int fsck_status;
 	int exit_status;
 
+	/* EXFAT fsck do not support volume dirty check option.
+	 * Read it's volume dirty flag directly here.
+	 */
+	if (fstype == EXFAT) {
+		return !is_exfat_clean(device_file);
+	}
+
+	/*
+	 * In case of NTFS, FAT,
+	 * execute fsck with only checking volume dirty flag option
+	 */
 	pid = fork();
 	if (pid < 0) {
-		printf("failed to fork for %s: %s\n", param[PARAM_IDX_PROGS], strerror(errno));
+		fprintf(stderr, "failed to fork for %s: %s\n",
+				param[PARAM_IDX_PROGS], strerror(errno));
 		exit(EFSCK_EXIT_FAILURE);
 	} else if (pid == 0) {	/* child */
 		/* execute 'dosfsck -C <device>' for checking filesystem dirty flag */
 		execvp(param[PARAM_IDX_PROGS], param);
-		printf("failed to exec %s: %s\n", param[PARAM_IDX_PROGS], strerror(errno));
+		fprintf(stderr, "failed to exec %s: %s\n",
+				param[PARAM_IDX_PROGS], strerror(errno));
 		exit(EFSCK_EXIT_FAILURE);
 	}
 
@@ -197,20 +349,23 @@ static int check_is_dirty(char *device_file, char *param[])
 			if (errno == EINTR) {
 				kill_fsck();
 				exit_status = EXIT_USER_CANCEL;
-				return -EINTR;
 			} else {
-				printf("ERR: failed to waitpid: %s\n",
+				fprintf(stderr, "ERR: failed to waitpid: %s\n",
 						strerror(errno));
 				kill_fsck();
 				exit_status = EFSCK_EXIT_FAILURE;
-				return -EINVAL;
 			}
+			exit(exit_status);
 		}
 
 		if (WIFEXITED(wait_status)) {
-			exit_status = WEXITSTATUS(wait_status);
-			printf("EXIT STATUS: %d\n", exit_status);
-			return exit_status ? TRUE : FALSE;
+			fsck_status = WEXITSTATUS(wait_status);
+			fprintf(stdout, "EXIT STATUS: %d\n", fsck_status);
+			if (!fsck_status)
+				return FALSE;
+
+			handle_child_return_error(device_file, fstype, fsck_status);
+			return TRUE;
 		} else
 			break;
 	}
@@ -236,7 +391,7 @@ int check_ro_device(char *dev)
 	if (!S_ISBLK(st.st_mode)) {
 		if (!S_ISREG(st.st_mode)) {
 			/* if 'dev' is not block device or file, then exit */
-			printf("%s is not a block device or file\n", dev);
+			fprintf(stderr, "%s is not a block device or file\n", dev);
 			exit(EFSCK_EXIT_FAILURE);
 		}
 		return 0;
@@ -278,7 +433,7 @@ int main(int argc, char *argv[])
 	int version_only = FALSE;
 	int fsck_status;
 	int exit_status = EFSCK_EXIT_SUCCESS;
-	int fstype = 0;
+	fstype_t fstype = -1;
 
 	while ((c = getopt(argc, argv, "ahf:t:Vy")) != EOF) {
 		char *endptr = NULL;
@@ -299,18 +454,18 @@ int main(int argc, char *argv[])
 			case 't':
 				timeout_secs = strtoul(optarg, &endptr, 10);
 				if (endptr && *endptr != '\0') {
-					printf("Invalid timeout input! See below help\n\n");
+					fprintf(stderr, "Invalid timeout input! See below help\n\n");
 					usage(argv[0]);
 					exit(EFSCK_EXIT_SYNTAX_ERROR);
 				}
 				break;
 			case 'f':
-				if (strncmp(optarg, NTFS, sizeof(NTFS)) == 0) {
-					fstype = 0;
-				} else if (strncmp(optarg, EXFAT, sizeof(EXFAT)) == 0) {
-					fstype = 1;
-				} else if (strncmp(optarg, FAT, sizeof(FAT)) == 0) {
-					fstype = 2;
+				if (strncmp(optarg, fs_name[NTFS], strlen(optarg)) == 0) {
+					fstype = NTFS;
+				} else if (strncmp(optarg, fs_name[EXFAT], strlen(optarg)) == 0) {
+					fstype = EXFAT;
+				} else if (strncmp(optarg, fs_name[FAT], strlen(optarg)) == 0) {
+					fstype = FAT;
 				} else {
 					usage(argv[0]);
 					exit(EFSCK_EXIT_SYNTAX_ERROR);
@@ -328,21 +483,26 @@ int main(int argc, char *argv[])
 		exit(EFSCK_EXIT_SYNTAX_ERROR);
 	}
 
+	if (fstype < 0) {
+		fprintf(stderr, "wchkdsk: '-f' option should be specified to set filesystem\n");
+		exit(EFSCK_EXIT_SYNTAX_ERROR);
+	}
+
 	device_file = argv[optind];
 	fsck_param[fstype][PARAM_IDX_DEV] = device_file;
 
 	if (version_only) {
-		printf("wchkdsk version : %s\n", VERSION);
+		fprintf(stdout, "wchkdsk version : %s\n", VERSION);
 		return EFSCK_EXIT_SUCCESS;
 	}
 
 	if (check_ro_device(device_file)) {
-		printf("%s is read-only device!\n", device_file);
+		fprintf(stderr, "%s is read-only device!\n", device_file);
 		return EFSCK_EXIT_RO_DEVICE;
 	}
 
 	fsck_param[fstype][PARAM_IDX_OPTS] = fsck_opts[fstype][OPTS_IDX_CHECK];
-	if (!force_fsck && !check_is_dirty(device_file, fsck_param[fstype]))
+	if (!force_fsck && !check_is_dirty(device_file, fsck_param[fstype], fstype))
 		exit(EFSCK_EXIT_SUCCESS);
 
 	fsck_param[fstype][PARAM_IDX_OPTS] = fsck_opts[fstype][OPTS_IDX_DEFAULT];
@@ -350,11 +510,13 @@ int main(int argc, char *argv[])
 	/* run fsck */
 	fsck_pid = fork();
 	if (fsck_pid < 0) {
-		printf("failed to fork for %s: %s\n", fsck_param[fstype][PARAM_IDX_PROGS], strerror(errno));
+		fprintf(stderr, "failed to fork for %s: %s\n",
+				fsck_param[fstype][PARAM_IDX_PROGS], strerror(errno));
 		exit(EFSCK_EXIT_FAILURE);
 	} else if (fsck_pid == 0) {
 		execvp(fsck_param[fstype][PARAM_IDX_PROGS], fsck_param[fstype]);
-		printf("failed to exec %s: %s\n", fsck_param[fstype][PARAM_IDX_PROGS], strerror(errno));
+		fprintf(stderr, "failed to exec %s: %s\n",
+				fsck_param[fstype][PARAM_IDX_PROGS], strerror(errno));
 		exit(EFSCK_EXIT_FAILURE);
 	}
 
@@ -378,23 +540,29 @@ int main(int argc, char *argv[])
 			goto out;
 		}
 
-		if (st.st_mode & S_IWUSR)
-			exit_status = EFSCK_EXIT_FAILURE;
-		else
-			exit_status = EFSCK_EXIT_RO_DEVICE;
+		/*
+		 * ntfs return EXIT_OPERATION_ERROR(0x08)
+		 * when target is not ntfs format
+		 */
+		if (fstype == NTFS) {
+			if (!is_fstype_volume(device_file, fstype))
+				exit(EFSCK_EXIT_NOT_SUPPORT);
+		}
+
+		exit_status = EFSCK_EXIT_FAILURE;
 	} else if (fsck_status == EXIT_USER_CANCEL) {
-		printf("Timer is expired. %s is killed\n", fsck_param[fstype][PARAM_IDX_PROGS]);
+		fprintf(stderr, "Timer is expired. %s is killed\n",
+				fsck_param[fstype][PARAM_IDX_PROGS]);
 		exit_status = EFSCK_EXIT_TIMEOUT;
 	} else if (fsck_status == EXIT_SYNTAX_ERROR) {
 		usage(argv[0]);
 		exit(EFSCK_EXIT_SYNTAX_ERROR);
-	} else if (fsck_status == EXIT_ERRORS_LEFT) {
-		exit_status = EFSCK_EXIT_FAILURE;
-	} else if (fsck_status == EXIT_NOT_SUPPORT) {
-		exit_status = EFSCK_EXIT_NOT_FAT_VOLUME;
 	} else if (fsck_status != EXIT_NO_ERRORS &&
 			fsck_status != EXIT_CORRECTED) {
 		exit_status = EFSCK_EXIT_FAILURE;
+	} else {
+		exit_status =
+			handle_child_return_error(device_file, fstype, fsck_status);
 	}
 out:
 	exit(exit_status);
