@@ -427,7 +427,7 @@ int check_ro_device(char *dev)
 int main(int argc, char *argv[])
 {
 	int c;
-	int force_fsck = 0;
+	int force_fsck = 1;
 	char *device_file;
 	unsigned long timeout_secs = 0;
 	int version_only = FALSE;
