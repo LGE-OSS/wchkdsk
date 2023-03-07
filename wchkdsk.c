@@ -205,6 +205,7 @@ static int wait_for_fsck(pid_t pid, int *exit_status)
 		}
 		if (WIFEXITED(wait_status)) {
 			*exit_status = WEXITSTATUS(wait_status);
+			fprintf(stdout, "EXIT STATUS: %d\n", *exit_status);
 			return 0;
 		}
 	}
@@ -559,8 +560,6 @@ int main(int argc, char *argv[])
 		exit(EFSCK_EXIT_SYNTAX_ERROR);
 	} else if (fsck_status != EXIT_NO_ERRORS &&
 			fsck_status != EXIT_CORRECTED) {
-		exit_status = EFSCK_EXIT_FAILURE;
-	} else {
 		exit_status =
 			handle_child_return_error(device_file, fstype, fsck_status);
 	}
