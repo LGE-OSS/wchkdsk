@@ -61,6 +61,7 @@ typedef enum {
  *
  */
 typedef enum {
+	FSTYPE_NONE = -1,
 #define X(fstype, fs_name, sig, fsck_progs, default_opt, check_opt) \
 	fstype,
 	FILESYSTEM_DEF

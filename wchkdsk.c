@@ -434,7 +434,7 @@ int main(int argc, char *argv[])
 	int version_only = FALSE;
 	int fsck_status;
 	int exit_status = EFSCK_EXIT_SUCCESS;
-	fstype_t fstype = -1;
+	fstype_t fstype = FSTYPE_NONE;
 
 	while ((c = getopt(argc, argv, "ahf:t:Vy")) != EOF) {
 		char *endptr = NULL;
