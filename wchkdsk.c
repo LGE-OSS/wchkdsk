@@ -115,6 +115,15 @@ char *fsck_opts[FSTYPE_MAX][OPTS_IDX_MAX] = {
 #undef X
 };
 
+char *fsck_interactive_opts[FSTYPE_MAX][OPTS_IDX_MAX] = {
+#define X(fstype, name, sig, fsck_progs, default_opt, check_opt) \
+	{default_opt, check_opt},
+	X(NTFS, "ntfs", "NTFS    ", "ntfsck", "-r", "-C") \
+	X(EXFAT, "exfat", "EXFAT   ", "fsck.exfat", "-r", "") \
+	X(FAT, "fat", "", "dosfsck", "-r", "-C")
+#undef X
+};
+
 pid_t fsck_pid;
 
 static void usage(char *name)
@@ -433,11 +442,12 @@ int main(int argc, char *argv[])
 	unsigned long timeout_secs = 0;
 	int version_only = FALSE;
 	int fsck_status;
+	int user_interactive = FALSE;
 	int exit_status = EFSCK_EXIT_SUCCESS;
 	fstype_t fstype = FSTYPE_NONE;
 	struct stat st;
 
-	while ((c = getopt(argc, argv, "ahf:t:Vy")) != EOF) {
+	while ((c = getopt(argc, argv, "ahf:rt:Vy")) != EOF) {
 		char *endptr = NULL;
 		switch (c) {
 			case 'a':
@@ -473,6 +483,9 @@ int main(int argc, char *argv[])
 					exit(EFSCK_EXIT_SYNTAX_ERROR);
 				}
 				break;
+			case 'r':
+				user_interactive = TRUE;
+				break;
 			default:
 				usage(argv[0]);
 				exit(EFSCK_EXIT_SYNTAX_ERROR);
@@ -507,7 +520,12 @@ int main(int argc, char *argv[])
 	if (!force_fsck && !check_is_dirty(device_file, fsck_param[fstype], fstype))
 		exit(EFSCK_EXIT_SUCCESS);
 
-	fsck_param[fstype][PARAM_IDX_OPTS] = fsck_opts[fstype][OPTS_IDX_DEFAULT];
+	if (!user_interactive)
+		fsck_param[fstype][PARAM_IDX_OPTS] =
+			fsck_opts[fstype][OPTS_IDX_DEFAULT];
+	else
+		fsck_param[fstype][PARAM_IDX_OPTS] =
+			fsck_interactive_opts[fstype][OPTS_IDX_DEFAULT];
 
 	/* run fsck */
 	fsck_pid = fork();
