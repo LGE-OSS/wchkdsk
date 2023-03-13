@@ -38,7 +38,7 @@
  * };
  */
 static const char *fs_name[FSTYPE_MAX] = {
-#define X(fstype, name, sig, fsck_progs, default_opt, check_opt) \
+#define X(fstype, name, sig, fsck_progs, default_opt, check_opt, inter_opt) \
 	name,
 	FILESYSTEM_DEF
 #undef X
@@ -54,7 +54,7 @@ static const char *fs_name[FSTYPE_MAX] = {
  * };
  */
 static const char *fs_sig[FSTYPE_MAX] = {
-#define X(fstype, name, sig, fsck_progs, default_opt, check_opt) \
+#define X(fstype, name, sig, fsck_progs, default_opt, check_opt, inter_opt) \
 	sig,
 	FILESYSTEM_DEF
 #undef X
@@ -84,7 +84,7 @@ enum {
 };
 
 char *fsck_param[FSTYPE_MAX][PARAM_IDX_MAX + 1] = {
-#define X(fstype, name, sig, fsck_progs, default_opt, check_opt) \
+#define X(fstype, name, sig, fsck_progs, default_opt, check_opt, inter_opt) \
 	{fsck_progs, "", "", NULL},
 	FILESYSTEM_DEF
 #undef X
@@ -94,23 +94,24 @@ char *fsck_param[FSTYPE_MAX][PARAM_IDX_MAX + 1] = {
  * fsck_opts will expand like below:
  *
  * char *fsck_opts[][] = {
- *	{"-a", "-C"},	// for ntfs
- *	{"-ys", ""},	// for exfat
- *	{"-afw", "-C"},	// for fat
+ *	{"-a", "-C", "-r"},	// for ntfs
+ *	{"-ys", "", "-r"},	// for exfat
+ *	{"-afw", "-C", "-r"},	// for fat
  * };
  *
- * It means {<default_opt>, <check_opt>} respectively.
+ * It means {<default_opt>, <check_opt>, <interactive_opt>} respectively.
  * OPT_IDX_XXX is used to access array.
  */
 enum {
 	OPTS_IDX_DEFAULT = 0,
 	OPTS_IDX_CHECK,
+	OPTS_IDX_INTERACTIVE,
 	OPTS_IDX_MAX,
 };
 
 char *fsck_opts[FSTYPE_MAX][OPTS_IDX_MAX] = {
-#define X(fstype, name, sig, fsck_progs, default_opt, check_opt) \
-	{default_opt, check_opt},
+#define X(fstype, name, sig, fsck_progs, default_opt, check_opt, inter_opt) \
+	{default_opt, check_opt, inter_opt},
 	FILESYSTEM_DEF
 #undef X
 };
@@ -126,6 +127,7 @@ static void usage(char *name)
 	fprintf(stdout, "\t-f fstype    set filesystem type, {ntfs, exfat, fat}\n");
 	fprintf(stdout, "\t-a		Exit if Volume flag is clean. Auto-mode.\n");
 	fprintf(stdout, "\t-y		Same as '-a' except not checking for dirty flag.\n");
+	fprintf(stdout, "\t-r		execute fsck with interactive mode.\n");
 	fprintf(stdout, "\t-t seconds	Run with a time limit\n");
 	fprintf(stdout, "This util just runs wchkdsk for ntfsck/fsck.exfat/dosfsck.\n");
 }
@@ -433,11 +435,12 @@ int main(int argc, char *argv[])
 	unsigned long timeout_secs = 0;
 	int version_only = FALSE;
 	int fsck_status;
+	int user_interactive = FALSE;
 	int exit_status = EFSCK_EXIT_SUCCESS;
 	fstype_t fstype = FSTYPE_NONE;
 	struct stat st;
 
-	while ((c = getopt(argc, argv, "ahf:t:Vy")) != EOF) {
+	while ((c = getopt(argc, argv, "ahf:rt:Vy")) != EOF) {
 		char *endptr = NULL;
 		switch (c) {
 			case 'a':
@@ -473,6 +476,9 @@ int main(int argc, char *argv[])
 					exit(EFSCK_EXIT_SYNTAX_ERROR);
 				}
 				break;
+			case 'r':
+				user_interactive = TRUE;
+				break;
 			default:
 				usage(argv[0]);
 				exit(EFSCK_EXIT_SYNTAX_ERROR);
@@ -507,7 +513,12 @@ int main(int argc, char *argv[])
 	if (!force_fsck && !check_is_dirty(device_file, fsck_param[fstype], fstype))
 		exit(EFSCK_EXIT_SUCCESS);
 
-	fsck_param[fstype][PARAM_IDX_OPTS] = fsck_opts[fstype][OPTS_IDX_DEFAULT];
+	if (!user_interactive)
+		fsck_param[fstype][PARAM_IDX_OPTS] =
+			fsck_opts[fstype][OPTS_IDX_DEFAULT];
+	else
+		fsck_param[fstype][PARAM_IDX_OPTS] =
+			fsck_opts[fstype][OPTS_IDX_INTERACTIVE];
 
 	/* run fsck */
 	fsck_pid = fork();
