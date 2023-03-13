@@ -42,12 +42,13 @@ typedef enum {
  *	<fsck program>,
  *	<fsck default option>,
  *	<fsck dirty check option>,
+ *	<fsck interactive option>,
  *   )
  */
 #define FILESYSTEM_DEF \
-	X(NTFS, "ntfs", "NTFS    ", "ntfsck", "-a", "-C") \
-	X(EXFAT, "exfat", "EXFAT   ", "fsck.exfat", "-ys", "") \
-	X(FAT, "fat", "", "dosfsck", "-a", "-C")
+	X(NTFS, "ntfs", "NTFS    ", "ntfsck", "-a", "-C", "-r") \
+	X(EXFAT, "exfat", "EXFAT   ", "fsck.exfat", "-ys", "", "-r") \
+	X(FAT, "fat", "", "dosfsck", "-a", "-C", "-r")
 
 /*
  * fstype_t will expand code like as below
@@ -62,7 +63,7 @@ typedef enum {
  */
 typedef enum {
 	FSTYPE_NONE = -1,
-#define X(fstype, fs_name, sig, fsck_progs, default_opt, check_opt) \
+#define X(fstype, fs_name, sig, fsck_progs, default_opt, check_opt, inter_opt) \
 	fstype,
 	FILESYSTEM_DEF
 #undef X
