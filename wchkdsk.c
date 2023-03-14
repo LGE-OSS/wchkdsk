@@ -435,6 +435,7 @@ int main(int argc, char *argv[])
 	int fsck_status;
 	int exit_status = EFSCK_EXIT_SUCCESS;
 	fstype_t fstype = FSTYPE_NONE;
+	struct stat st;
 
 	while ((c = getopt(argc, argv, "ahf:t:Vy")) != EOF) {
 		char *endptr = NULL;
@@ -529,18 +530,16 @@ int main(int argc, char *argv[])
 
 	wait_for_fsck(fsck_pid, &fsck_status);
 
+	if (stat(device_file, &st) != 0) {
+		if (errno == ENOENT)
+			exit_status = EFSCK_EXIT_USER_CANCEL;
+		else
+			exit_status = EFSCK_EXIT_FAILURE;
+		goto out;
+	}
+
 	/* handle exit status */
 	if (fsck_status == EXIT_OPERATION_ERROR) {
-		struct stat st;
-
-		if (stat(device_file, &st) != 0) {
-			if (errno == ENOENT)
-				exit_status = EFSCK_EXIT_USER_CANCEL;
-			else
-				exit_status = EFSCK_EXIT_FAILURE;
-			goto out;
-		}
-
 		/*
 		 * ntfs return EXIT_OPERATION_ERROR(0x08)
 		 * when target is not ntfs format
