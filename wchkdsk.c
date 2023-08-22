@@ -527,6 +527,9 @@ int main(int argc, char *argv[])
 				fsck_param[fstype][PARAM_IDX_PROGS], strerror(errno));
 		exit(EFSCK_EXIT_FAILURE);
 	} else if (fsck_pid == 0) {
+		if (nice(19) < 0)
+			fprintf(stderr, "failed to lower schedule priority: %s\n",
+				strerror(errno));
 		execvp(fsck_param[fstype][PARAM_IDX_PROGS], fsck_param[fstype]);
 		fprintf(stderr, "failed to exec %s: %s\n",
 				fsck_param[fstype][PARAM_IDX_PROGS], strerror(errno));
