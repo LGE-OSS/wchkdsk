@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier : GPL-2.0 */
+
 #ifndef FAT_FSCK_H_
 #define FAT_FSCK_H_
 

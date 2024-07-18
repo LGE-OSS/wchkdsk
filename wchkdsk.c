@@ -20,6 +20,7 @@
 #include <signal.h>
 #include <time.h>
 #include <sys/sysmacros.h>
+#include <sys/resource.h>
 
 #include "version.h"
 #include "wchkdsk.h"
@@ -122,14 +123,15 @@ static void usage(char *name)
 {
 	fprintf(stdout, "wchkdsk version : %s\n", VERSION);
 	fprintf(stdout, "Usage: %s [option] <device>\n", name);
-	fprintf(stdout, "\t-h		Show help\n");
-	fprintf(stdout, "\t-V		Show version\n");
-	fprintf(stdout, "\t-f fstype    set filesystem type, {ntfs, exfat, fat}\n");
-	fprintf(stdout, "\t-a		Exit if Volume flag is clean. Auto-mode.\n");
-	fprintf(stdout, "\t-y		Same as '-a' except not checking for dirty flag.\n");
-	fprintf(stdout, "\t-r		execute fsck with interactive mode.\n");
-	fprintf(stdout, "\t-t seconds	Run with a time limit\n");
-	fprintf(stdout, "This util just runs wchkdsk for ntfsck/fsck.exfat/dosfsck.\n");
+	fprintf(stdout, "\t-h\t\tShow help\n");
+	fprintf(stdout, "\t-V\t\tShow version\n");
+	fprintf(stdout, "\t-f fstype\tset filesystem type, {ntfs, exfat, fat}\n");
+	fprintf(stdout, "\t-a\t\tExit if Volume flag is clean. Auto-mode.\n");
+	fprintf(stdout, "\t-y\t\tSame as '-a' except not checking for dirty flag.\n");
+	fprintf(stdout, "\t-r\t\texecute fsck with interactive mode.\n");
+	fprintf(stdout, "\t-p nice\t\texecute fsck with nice lowest ~ highest value(19 ~ -20).\n");
+	fprintf(stdout, "\t-t seconds\tRun with a time limit\n");
+	fprintf(stdout, "\nThis util just runs wchkdsk for ntfsck/fsck.exfat/dosfsck.\n");
 }
 
 static int kill_fsck(void)
@@ -434,13 +436,14 @@ int main(int argc, char *argv[])
 	char *device_file;
 	unsigned long timeout_secs = 0;
 	int version_only = FALSE;
+	int nice_value = 0;
 	int fsck_status;
 	int user_interactive = FALSE;
 	int exit_status = EFSCK_EXIT_SUCCESS;
 	fstype_t fstype = FSTYPE_NONE;
 	struct stat st;
 
-	while ((c = getopt(argc, argv, "ahf:rt:Vy")) != EOF) {
+	while ((c = getopt(argc, argv, "ahf:p:rt:Vy")) != EOF) {
 		char *endptr = NULL;
 		switch (c) {
 			case 'a':
@@ -472,6 +475,16 @@ int main(int argc, char *argv[])
 				} else if (strncmp(optarg, fs_name[FAT], strlen(optarg)) == 0) {
 					fstype = FAT;
 				} else {
+					usage(argv[0]);
+					exit(EFSCK_EXIT_SYNTAX_ERROR);
+				}
+				break;
+			case 'p':
+
+				nice_value = atoi(optarg);
+				if (nice_value > 19 || nice_value < -20) {
+					fprintf(stderr, "Invalid nice value. 19(lowest) "
+							"~ -20(highest) valid\n\n");
 					usage(argv[0]);
 					exit(EFSCK_EXIT_SYNTAX_ERROR);
 				}
@@ -527,9 +540,11 @@ int main(int argc, char *argv[])
 				fsck_param[fstype][PARAM_IDX_PROGS], strerror(errno));
 		exit(EFSCK_EXIT_FAILURE);
 	} else if (fsck_pid == 0) {
-		if (nice(19) < 0)
-			fprintf(stderr, "failed to lower schedule priority: %s\n",
-				strerror(errno));
+		if (getpriority(PRIO_PROCESS, 0) != nice_value) {
+			if (nice(nice_value) < 0)
+				fprintf(stderr, "failed to lower schedule priority: %s\n",
+						strerror(errno));
+		}
 		execvp(fsck_param[fstype][PARAM_IDX_PROGS], fsck_param[fstype]);
 		fprintf(stderr, "failed to exec %s: %s\n",
 				fsck_param[fstype][PARAM_IDX_PROGS], strerror(errno));
