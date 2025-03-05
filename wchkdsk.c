@@ -136,8 +136,10 @@ static void usage(char *name)
 
 static int kill_fsck(void)
 {
-	kill(fsck_pid, SIGTERM);
-	waitpid(fsck_pid, NULL, 0);
+	if (fsck_pid != 0) {
+		kill(fsck_pid, SIGTERM);
+		waitpid(fsck_pid, NULL, 0);
+	}
 	return 0;
 }
 
@@ -522,6 +524,11 @@ int main(int argc, char *argv[])
 		return EFSCK_EXIT_RO_DEVICE;
 	}
 
+	if (setup_signal_handlers(timeout_secs) != 0) {
+		fprintf(stderr, "failed to setup signal handler\n");
+		exit(EFSCK_EXIT_FAILURE);
+	}
+
 	fsck_param[fstype][PARAM_IDX_OPTS] = fsck_opts[fstype][OPTS_IDX_CHECK];
 	if (!force_fsck && !check_is_dirty(device_file, fsck_param[fstype], fstype))
 		exit(EFSCK_EXIT_SUCCESS);
@@ -549,12 +556,6 @@ int main(int argc, char *argv[])
 		fprintf(stderr, "failed to exec %s: %s\n",
 				fsck_param[fstype][PARAM_IDX_PROGS], strerror(errno));
 		exit(EFSCK_EXIT_FAILURE);
-	}
-
-	if (setup_signal_handlers(timeout_secs) != 0) {
-		kill_fsck();
-		exit_status = EFSCK_EXIT_FAILURE;
-		goto out;
 	}
 
 	wait_for_fsck(fsck_pid, &fsck_status);
