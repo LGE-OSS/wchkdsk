@@ -50,7 +50,7 @@ typedef enum {
 #define FILESYSTEM_DEF \
 	X(NTFS, "ntfs", "NTFS    ", "ntfsck", "-a", "-C", "-r") \
 	X(EXFAT, "exfat", "EXFAT   ", "fsck.exfat", "-ys", "", "-r") \
-	X(FAT, "fat", "", "dosfsck", "-a", "-C", "-r")
+	X(FAT, "fat", "", "dosfsck", "-afw", "-C", "-r")
 
 /*
  * fstype_t will expand code like as below
